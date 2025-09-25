@@ -242,6 +242,11 @@ class MoxiePuppetView(generic.DetailView):
     template_name = "hive/puppet.html"
     model = MoxieDevice
 
+# TELEHEALTH STUDIO - Direct markup driven telehealth view
+class TelehealthStudioView(generic.DetailView):
+    template_name = "hive/telehealth.html"
+    model = MoxieDevice
+
 # PUPPET API - Handle AJAX calls from puppet view
 @csrf_exempt
 def puppet_api(request, pk):
@@ -276,6 +281,54 @@ def puppet_api(request, pk):
         return JsonResponse({'result': True})
     except MoxieDevice.DoesNotExist as e:
         logger.warning("Moxie puppet speak for unfound pk {pk}")
+        return HttpResponseBadRequest()
+
+# TELEHEALTH API - Handle AJAX calls from telehealth studio view
+@csrf_exempt
+def telehealth_api(request, pk):
+    try:
+        device = MoxieDevice.objects.get(pk=pk)
+        if request.method == 'GET':
+            result = {
+                "online": get_instance().robot_data().device_online(device.device_id),
+                "puppet_state": get_instance().robot_data().get_puppet_state(device.device_id),
+                "puppet_enabled": device.robot_config.get("moxie_mode") == "TELEHEALTH" if device.robot_config else False
+            }
+            return JsonResponse(result)
+        elif request.method == 'POST':
+            if not device.robot_config:
+                device.robot_config = {}
+            cmd = request.POST['command']
+            if cmd == "enable":
+                device.robot_config["moxie_mode"] = "TELEHEALTH"
+                device.save()
+                get_instance().handle_config_updated(device)
+            elif cmd == "disable":
+                device.robot_config.pop("moxie_mode", None)
+                device.save()
+                get_instance().handle_config_updated(device)
+            elif cmd == "interrupt":
+                get_instance().send_telehealth_interrupt(device.device_id)
+            elif cmd == "speak_auto":
+                try:
+                    intensity = float(request.POST.get('intensity', 0.5))
+                except ValueError:
+                    return JsonResponse({'error': 'Invalid intensity value'}, status=400)
+                get_instance().send_telehealth_speech(
+                    device.device_id,
+                    request.POST.get('speech', ''),
+                    request.POST.get('mood', 'neutral'),
+                    intensity
+                )
+            elif cmd == "speak_markup":
+                markup = request.POST.get('markup', '')
+                if not markup.strip():
+                    return JsonResponse({'error': 'Markup cannot be empty'}, status=400)
+                speech = request.POST.get('speech', '')
+                get_instance().send_telehealth_markup(device.device_id, speech, markup)
+        return JsonResponse({'result': True})
+    except MoxieDevice.DoesNotExist:
+        logger.warning(f"Telehealth studio call for unfound pk {pk}")
         return HttpResponseBadRequest()
     
 # MOXIE - View Moxie Mission Sets to Complete
