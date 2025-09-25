@@ -58,6 +58,33 @@ Currently this project contains the following:
 * A simple MQTT based STT provider using OpenAI Whisper
 * A simple MQTT based remote chat service using single prompt inferences from OpenAI
 
+## Telehealth Studio
+
+The Telehealth Studio gives you a richer puppeteering surface for recorded performances. From the dashboard choose
+**Telehealth Studio** next to a device to:
+
+* Toggle Telehealth mode on the robot.
+* Send auto-generated markup using the familiar mood/intensity sliders.
+* Paste raw markup strings to chain gestures, pauses, screen graphics, and sound effects without losing timing control.
+
+When running inside Docker alongside the rest of the OpenMoxie stack:
+
+1. Build and start the full stack, including MQTT, from the project root:
+   ```
+   docker-compose up --build -d
+   ```
+2. Visit `http://localhost:8001/hive` and sign in.
+3. From **Devices** choose **Telehealth Studio** for the target robot.
+4. Press **Start Telehealth Mode** to wake the robot into Telehealth/puppet mode, then use either form to send output.
+
+If you are already running the standard containers you can refresh just the Django service after pulling these changes:
+
+```
+docker-compose up --build -d server
+```
+
+The studio reuses the existing MQTT broker (`mqtt` service) and remote chat pipeline, so no extra processes are required.
+
 ## Code 
 
 ## Building Your Own Docker

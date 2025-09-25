@@ -313,10 +313,15 @@ class MoxieServer:
     def send_telehealth(self, device_id, msg):
         self.send_command_to_bot_json(device_id, "telehealth", payload={ "command": "telehealth", "message": msg })
 
-    # Send Telehealth - PLAY message to Moxie
-    def send_telehealth_speech(self, device_id, speech:str, mood:str, intensity:float):
+    # Send Telehealth - PLAY message to Moxie with generated markup
+    def send_telehealth_speech(self, device_id, speech: str, mood: str, intensity: float):
         markup = self._remote_chat.make_markup(speech, (mood, intensity))
-        tmsg = { "action": "PLAY_OUTPUT", "output": { "text": speech, "markup": markup } }
+        tmsg = {"action": "PLAY_OUTPUT", "output": {"text": speech, "markup": markup}}
+        self.send_telehealth(device_id, tmsg)
+
+    # Send Telehealth - PLAY message with caller provided markup
+    def send_telehealth_markup(self, device_id, speech: str, markup: str):
+        tmsg = {"action": "PLAY_OUTPUT", "output": {"text": speech or "", "markup": markup}}
         self.send_telehealth(device_id, tmsg)
 
     # Send Telehealth - INTERRUPT Moxie speaking

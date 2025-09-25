@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<div class="moxheader"><a href="{% url 'hive:dashboard' %}"><img class="moximage" src="{% static 'hive/openmoxie_logo.svg' %}"></a>OpenMoxie<span class="moxversion">{{moxie_version}}</span></div>
+<div class="p-3">
+  <h2>Telehealth Studio</h2>
+  <p>
+    Author and send fully custom telehealth outputs to Moxie. Use the auto-markup tools for quick takes or paste
+    handcrafted markup to drive complex performances, gestures, and screen effects.
+  </p>
+  <button id="telehealth_button" type="button" class="btn btn-success mb-3">Start Telehealth Mode</button>
+  <table class="table w-auto">
+    <tr><th>Name</th><td>{{object.name}}</td></tr>
+    <tr><th>Device ID</th><td>{{object.device_id}}</td></tr>
+    <tr><th>Moxie State</th><td><span class="badge text-bg-success" id="moxie_state">Online</span></td></tr>
+    <tr><th>Puppet State</th><td><span class="badge text-bg-success" id="puppet_state">READY</span></td></tr>
+  </table>
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h3 class="card-title">Auto Markup Output</h3>
+          <p class="card-text">Let OpenMoxie generate markup from the mood and intensity sliders, ideal for quick readings.</p>
+          <form id="auto_form">
+            <div class="mb-3">
+              <label class="form-label" for="auto_mood">Mood</label>
+              <select id="auto_mood" name="mood" class="form-select">
+                <option value="neutral">Neutral</option>
+                <option value="happy">Happy</option>
+                <option value="positive">Positive</option>
+                <option value="angry">Angry</option>
+                <option value="sad">Sad</option>
+                <option value="negative">Negative</option>
+                <option value="shy">Shy</option>
+                <option value="afraid">Afraid</option>
+                <option value="concerned">Concerned</option>
+                <option value="confused">Confused</option>
+                <option value="curious">Curious</option>
+                <option value="embarrassed">Embarrassed</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="auto_intensity">Intensity</label>
+              <input type="range" min="0.0" max="1.0" step="0.1" id="auto_intensity" name="intensity" value="0.5" class="form-range">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="auto_speech">Script</label>
+              <textarea id="auto_speech" name="speech" class="form-control" rows="4" placeholder="What should Moxie say?"></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Send Auto Output</button>
+              <button type="button" id="auto_clear" class="btn btn-outline-secondary">Clear</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h3 class="card-title">Direct Markup Output</h3>
+          <p class="card-text">
+            Paste raw markup to drive gestures, pauses, and screen content exactly when you need them. The optional
+            plain-text field helps label the line for history and transcripts.
+          </p>
+          <form id="markup_form">
+            <div class="mb-3">
+              <label class="form-label" for="markup_speech">Plain Text (optional)</label>
+              <input id="markup_speech" name="speech" class="form-control" placeholder="Shown in history only">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="markup_input">Markup</label>
+              <textarea id="markup_input" name="markup" class="form-control" rows="14" placeholder="<mark name=&quot;cmd:behaviour-tree&quot; args=&quot;pose/smile&quot;/>"></textarea>
+              <div class="form-text">Refer to <code>doc/Markup.md</code> for supported tags.</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Send Markup Output</button>
+              <button type="button" id="clear_markup" class="btn btn-outline-secondary">Clear</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="card-title">History</h3>
+            <button title="Stop Moxie's current speech" id="interrupt_button" type="button" class="btn btn-secondary btn-sm">Interrupt</button>
+          </div>
+          <div id="chat_window" class="chat-window">
+            <ul id="chat_history" class="list-group"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function add_to_history(prefix, badgeClass, text) {
+    const li = $('<li>').addClass('list-group-item chat-line');
+    const badge = $('<span>').addClass('badge rounded-pill ' + badgeClass).text(prefix);
+    const body = $('<pre>').addClass('mb-0 d-inline').text(text);
+    li.append(badge).append('&nbsp;').append(body);
+    $('#chat_history').append(li);
+    $('#chat_window').scrollTop($('#chat_window')[0].scrollHeight);
+  }
+
+  function set_telehealth_state(enabled) {
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'hive:telehealth_api' object.pk %}",
+      data: { 'command': enabled ? 'enable' : 'disable' },
+      dataType: 'json'
+    }).always(function() {
+      window.setTimeout(refresh_view, 1);
+    });
+  }
+
+  function send_auto_output(speech, mood, intensity) {
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'hive:telehealth_api' object.pk %}",
+      data: {
+        'command': 'speak_auto',
+        'speech': speech,
+        'mood': mood,
+        'intensity': intensity
+      },
+      dataType: 'json'
+    }).done(function() {
+      add_to_history('Auto', 'bg-primary', speech);
+    }).fail(function(jqXHR) {
+      console.log('Failed auto output', jqXHR.responseText);
+    });
+  }
+
+  function send_markup_output(speech, markup) {
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'hive:telehealth_api' object.pk %}",
+      data: {
+        'command': 'speak_markup',
+        'speech': speech,
+        'markup': markup
+      },
+      dataType: 'json'
+    }).done(function() {
+      add_to_history('Markup', 'bg-info text-dark', markup);
+    }).fail(function(jqXHR) {
+      console.log('Failed markup output', jqXHR.responseText);
+    });
+  }
+
+  function send_interrupt() {
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'hive:telehealth_api' object.pk %}",
+      data: { 'command': 'interrupt' },
+      dataType: 'json'
+    }).done(function() {
+      add_to_history('System', 'bg-secondary', '--Interrupt--');
+    }).fail(function(jqXHR) {
+      console.log('Failed interrupt', jqXHR.responseText);
+    });
+  }
+
+  function refresh_view() {
+    $.ajax({
+      type: 'GET',
+      url: "{% url 'hive:telehealth_api' object.pk %}",
+      dataType: 'json'
+    }).done(function(data) {
+      if (data['online']) {
+        $('#moxie_state')
+          .removeClass('text-bg-danger')
+          .addClass('text-bg-success')
+          .text('Online');
+      } else {
+        $('#moxie_state')
+          .removeClass('text-bg-success')
+          .addClass('text-bg-danger')
+          .text('Offline');
+      }
+
+      if (data['puppet_state'] != null) {
+        $('#puppet_state')
+          .removeClass('text-bg-warning')
+          .addClass('text-bg-success')
+          .text(data['puppet_state']);
+      } else {
+        $('#puppet_state')
+          .removeClass('text-bg-success')
+          .addClass('text-bg-warning')
+          .text('PENDING');
+      }
+
+      if (data['puppet_enabled']) {
+        $('#telehealth_button')
+          .removeClass('btn-success')
+          .addClass('btn-danger')
+          .text('Stop Telehealth Mode')
+          .off('click').on('click', function() { set_telehealth_state(false); });
+      } else {
+        $('#telehealth_button')
+          .removeClass('btn-danger')
+          .addClass('btn-success')
+          .text('Start Telehealth Mode')
+          .off('click').on('click', function() { set_telehealth_state(true); });
+      }
+    }).always(function() {
+      window.setTimeout(refresh_view, 2000);
+    });
+  }
+
+  $(document).ready(function() {
+    $('#auto_form').on('submit', function(e) {
+      e.preventDefault();
+      const speech = $('#auto_speech').val();
+      if (!speech.trim()) {
+        return;
+      }
+      send_auto_output(speech, $('#auto_mood').val(), $('#auto_intensity').val());
+    });
+
+    $('#auto_clear').on('click', function() {
+      $('#auto_speech').val('');
+    });
+
+    $('#markup_form').on('submit', function(e) {
+      e.preventDefault();
+      const markup = $('#markup_input').val();
+      if (!markup.trim()) {
+        return;
+      }
+      send_markup_output($('#markup_speech').val(), markup);
+    });
+
+    $('#clear_markup').on('click', function() {
+      $('#markup_speech').val('');
+      $('#markup_input').val('');
+    });
+
+    $('#interrupt_button').on('click', function() {
+      send_interrupt();
+    });
+
+    refresh_view();
+  });
+</script>
+{% endblock %}
